@@ -1,6 +1,14 @@
-from fastapi import FastAPI
+from enum import Enum
+from fastapi import FastAPI, Depends
+from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
+
+import backend.models as models
+from backend.database import engine, get_db
+
+# Perintah untuk membuat semua tabel di PostgreSQL secara otomatis
+models.Base.metadata.create_all(bind=engine)
 
 # Mengimpor seluruh fungsi logika bisnis dari Sesi 2 TANPA MENGUBAH trip_service.py
 from backend.services.trip_service import (
@@ -23,13 +31,27 @@ app = FastAPI(
 # 1. SCHEMAS / PYDANTIC MODELS (Model Validasi Request Body)
 # =====================================================================
 
+class MonthEnum(str, Enum):
+    january = "January"
+    february = "February"
+    march = "March"
+    april = "April"
+    may = "May"
+    june = "June"
+    july = "July"
+    august = "August"
+    september = "September"
+    october = "October"
+    november = "November"
+    december = "December"
+
 class TripRequest(BaseModel):
     destination: str
     country: Optional[str] = "Unknown"
     days: int
     budget: float
     currency: Optional[str] = "USD"
-    travel_month: Optional[str] = "Regular"
+    travel_month: MonthEnum
     travel_style: Optional[str] = "Standard"  # [CORE CHALLENGE]
     hotel_cost: Optional[float] = 0.0
     food_cost: Optional[float] = 0.0
@@ -79,7 +101,7 @@ def create_trip(request: TripRequest):
     # [CORE CHALLENGE] Transport Recommendation
     recommendation_transport = get_recommended_transportation(category)
     
-    season = get_travel_season(request.travel_month)
+    season = get_travel_season(request.travel_month.value)
     total_cost = calculate_total_cost(
         request.hotel_cost, request.food_cost, request.transport_cost, request.misc_cost
     )
@@ -103,3 +125,60 @@ def create_trip(request: TripRequest):
         "total_cost": total_cost,
         "budget_exceeded_warning": is_budget_exceeded
     }
+
+# =========================================================
+# 3. ENDPOINTS DENGAN DATABASE POSTGRESQL (SESI 4)
+# =========================================================
+
+@app.post("/trips")
+def create_trip_db(request: TripRequest, db: Session = Depends(get_db)):
+    # 1. Jalankan Logika Bisnis
+    daily_budget = calculate_daily_budget(request.budget, request.days)
+    category = get_trip_category(request.budget)
+    season = get_travel_season(request.travel_month.value)
+
+    # Membungkus string menjadi List -> ["Bandung"]
+    places = get_recommended_places([request.destination])
+
+    # Mengirimkan hasil kategori durasi perjalanan
+    transport = get_recommended_transportation(category)
+
+    # Kirim 4 argumen lengkap ke calculate_total_cost
+    total_cost = calculate_total_cost(
+        request.hotel_cost,
+        request.food_cost,
+        request.transport_cost,
+        request.misc_cost
+    )
+    is_budget_exceeded = "Ya" if total_cost > request.budget else "Tidak"
+
+    # 2. Buat Objek Model ORM
+    new_trip = models.Trip(
+        destination=request.destination,
+        country=request.country,
+        days=request.days,
+        budget=request.budget,
+        currency=request.currency,
+        daily_budget=daily_budget,
+        category=category,
+        travel_month=request.travel_month.value,
+        season=season,
+        recommended_places=places,
+        travel_style=request.travel_style,
+        recommendation_transport=transport,
+        total_cost=total_cost,
+        budget_exceeded_warning=is_budget_exceeded
+    )
+
+    # 3. Simpan ke Database PostgreSQL
+    db.add(new_trip)
+    db.commit()
+    db.refresh(new_trip)
+
+    return new_trip
+
+
+@app.get("/trips")
+def get_all_trips(db: Session = Depends(get_db)):
+    trips = db.query(models.Trip).all()
+    return trips

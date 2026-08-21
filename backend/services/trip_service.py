@@ -3,7 +3,7 @@ def calculate_daily_budget(budget, days):
     return budget / days
 
 def calculate_total_cost(hotel, food, transport, misc):
-    """[SESI 1 CORE CHALLENGE] Menhitung total estimasi biaya perjalanan."""
+    """[SESI 1 CORE CHALLENGE] Menghitung total estimasi biaya perjalanan."""
     return hotel + food + transport + misc
 
 def get_trip_category(budget):
