@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, JSON
+from sqlalchemy import Column, Integer, String, Float, JSON, Text
 from backend.database import Base
 
 class Trip(Base):
@@ -19,3 +19,4 @@ class Trip(Base):
     recommendation_transport = Column(String)
     total_cost = Column(Float)
     budget_exceeded_warning = Column(String)
+    ai_recommendation = Column(Text, nullable=True) # Baris baru Sesi 5

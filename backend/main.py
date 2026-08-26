@@ -1,5 +1,5 @@
 from enum import Enum
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
@@ -19,6 +19,8 @@ from backend.services.trip_service import (
     get_recommended_transportation,
     get_travel_season
 )
+
+from backend.services.bedrock_service import generate_trip_recommendation
 
 # Inisialisasi Aplikasi FastAPI
 app = FastAPI(
@@ -182,3 +184,34 @@ def create_trip_db(request: TripRequest, db: Session = Depends(get_db)):
 def get_all_trips(db: Session = Depends(get_db)):
     trips = db.query(models.Trip).all()
     return trips
+
+# # =======================================================
+# # 4. ENDPOINT AI GENERATION AMAZON BEDROCK (SESI 5)
+# # =======================================================
+
+@app.post("/api/v1/trips/{id}/generate")
+def generate_ai_recommendation(id: int, db: Session = Depends(get_db)):
+    # 1. Cari data trip berdasarkan ID di PostgreSQL
+    trip = db.query(models.Trip).filter(models.Trip.id == id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    # 2. Panggil Bedrock Service untuk membuat rekomendasi AI
+    ai_result = generate_trip_recommendation(
+        destination=trip.destination,
+        days=trip.days,
+        budget=trip.budget,
+        travel_style=trip.travel_style or "Standard"
+    )
+
+    # 3. Simpan hasil rekomendasi ke database PostgreSQL
+    trip.ai_recommendation = ai_result
+    db.commit()
+    db.refresh(trip)
+
+    # 4. Kembalikan balasan JSON
+    return {
+        "trip_id": trip.id,
+        "destination": trip.destination,
+        "recommendation": trip.ai_recommendation
+    }
