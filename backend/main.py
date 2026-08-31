@@ -1,5 +1,6 @@
 from enum import Enum
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
@@ -16,7 +17,7 @@ from backend.services.trip_service import (
     calculate_total_cost,
     get_trip_category,
     get_recommended_places,
-    get_recommended_transportation,
+    evaluate_travel_style,
     get_travel_season
 )
 
@@ -27,6 +28,15 @@ app = FastAPI(
     title="KelanaAI API",
     description="REST API Service for KelanaAI Travel Planner",
     version="0.3.0"
+)
+
+# Tambahkan middleware CORS agar Next.js (port 3000) bisa terhubung
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # =====================================================================
@@ -89,28 +99,34 @@ def get_all_recommendations():
 def get_all_transportations():
     return ["Bus", "Train", "Flight"]
 
-# [HANDS-ON LAB & CORE CHALLENGE] Endpoint 3 — POST /api/v1/trips
+# [HANDS-ON LAB & CORE CHALLENGE] Endpoint 3 — POST /api/v1/trips [Endpoint Utama untuk frontend Next.js (Prescriptive UX)]
 @app.post("/api/v1/trips")
 def create_trip(request: TripRequest):
     # Memanggil fungsi logika bisnis dari trip_service.py
+    # 1. Hitung Anggaran Harian 
     daily_budget = calculate_daily_budget(request.budget, request.days)
-    category = get_trip_category(request.budget)
+
+    # 2. Penentuan Kategori Trip Dasar berdasarkan Total Budget
+    category = get_trip_category(daily_budget)
     
-    # Mengolah list destinasi
+    # 3. Mengolah list destinasi / Ambil Rekomendasi Tempat
     destinations_list = [request.destination]
     places = get_recommended_places(destinations_list)
     
-    # [CORE CHALLENGE] Transport Recommendation
-    recommendation_transport = get_recommended_transportation(category)
+    # 4. Evaluasi Gaya Perjalanan & Rekomendasi Transportasi Pintar
+    style_eval = evaluate_travel_style(daily_budget, request.travel_style)
     
-    season = get_travel_season(request.travel_month.value)
+    # 5. Penentuan Musim Perjalanan (Dikelola aman via trip_service.py)
+    season = get_travel_season(request.travel_month)
+    
+    # 6. Hitung Total Biaya Estimasi
     total_cost = calculate_total_cost(
         request.hotel_cost, request.food_cost, request.transport_cost, request.misc_cost
     )
     
     is_budget_exceeded = total_cost > request.budget
 
-    # Mengembalikan JSON Response
+    # 7. Kembalikan Balasan JSON Lengkap
     return {
         "destination": request.destination,
         "country": request.country,
@@ -123,7 +139,9 @@ def create_trip(request: TripRequest):
         "season": season,
         "recommended_places": places,
         "travel_style": request.travel_style,
-        "recommendation_transport": recommendation_transport,  # [CORE CHALLENGE]
+        "recommendation_transport": style_eval["transportation"],
+        "is_mismatch": style_eval["is_mismatch"],
+        "advice": style_eval["advice"],
         "total_cost": total_cost,
         "budget_exceeded_warning": is_budget_exceeded
     }
@@ -136,14 +154,11 @@ def create_trip(request: TripRequest):
 def create_trip_db(request: TripRequest, db: Session = Depends(get_db)):
     # 1. Jalankan Logika Bisnis
     daily_budget = calculate_daily_budget(request.budget, request.days)
-    category = get_trip_category(request.budget)
-    season = get_travel_season(request.travel_month.value)
+    category = get_trip_category(daily_budget)
+    season = get_travel_season(request.travel_month)
 
-    # Membungkus string menjadi List -> ["Bandung"]
     places = get_recommended_places([request.destination])
-
-    # Mengirimkan hasil kategori durasi perjalanan
-    transport = get_recommended_transportation(category)
+    style_eval = evaluate_travel_style(daily_budget, request.travel_style)
 
     # Kirim 4 argumen lengkap ke calculate_total_cost
     total_cost = calculate_total_cost(
@@ -167,7 +182,7 @@ def create_trip_db(request: TripRequest, db: Session = Depends(get_db)):
         season=season,
         recommended_places=places,
         travel_style=request.travel_style,
-        recommendation_transport=transport,
+        recommendation_transport=style_eval["transportation"],
         total_cost=total_cost,
         budget_exceeded_warning=is_budget_exceeded
     )
