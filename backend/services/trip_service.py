@@ -9,10 +9,10 @@ def calculate_total_cost(hotel: float, food: float, transport: float, misc: floa
     return hotel + food + transport + misc
 
 def get_trip_category(daily_budget: float) -> str:
-    """Menentukan kategori trip berdasarkan budget harian."""
+    """Menentukan kategori trip berdasarkan budget harian (Kalkulasi AI)."""
     if daily_budget >= 150:
         return "Luxury"
-    elif daily_budget > 50:
+    elif daily_budget >= 50:
         return "Standard"
     else:
         return "Backpacker"
@@ -22,20 +22,24 @@ def get_recommended_places(destinations: list) -> list:
     recommended_places = []
     for dest in destinations:
         dest_clean = dest.strip().lower()
-        if dest_clean in ["japan", "tokyo"]:
+        if any(k in dest_clean for k in ["japan", "tokyo", "osaka", "kyoto"]):
             recommended_places.extend(["Tokyo Tower", "Shibuya Crossing", "Mount Fuji"])
-        elif dest_clean in ["korea", "seoul"]:
+        elif any(k in dest_clean for k in ["korea", "seoul"]):
             recommended_places.extend(["Namsan Tower", "Gyeongbokgung Palace", "Myeongdong"])
+        elif any(k in dest_clean for k in ["thailand", "bangkok"]):
+            recommended_places.extend(["Grand Palace", "Wat Arun", "Chatuchak Market"])
+        elif any(k in dest_clean for k in ["france", "paris"]):
+            recommended_places.extend(["Eiffel Tower", "Louvre Museum", "Arc de Triomphe"])
+        elif any(k in dest_clean for k in ["london", "uk", "england"]):
+            recommended_places.extend(["Big Ben", "London Eye", "Tower Bridge"])
         else:
             recommended_places.extend(["City Center", "Local Market", "Historical Museum"])
     return list(dict.fromkeys(recommended_places))
 
 def get_travel_season(month: str) -> str:
     """Menentukan kategori season berdasarkan bulan perjalanan."""
-    # Ekstrak string murni jika bulan dikirim dalam format objek / Enum
     month_str = str(month.value if hasattr(month, 'value') else month).strip().lower()
 
-    # Menangani nama bulan lengkap maupun format 3 huruf
     if month_str in ["december", "dec", "12"]:
         return "Peak Season"
     elif month_str in ["june", "jun", "6"]:
@@ -43,37 +47,35 @@ def get_travel_season(month: str) -> str:
     else:
         return "Regular Season"
 
-def evaluate_travel_style(daily_budget: float, travel_style: str) -> dict:
-    """Mengevaluasi kesesuaian gaya perjalanan dengan budget harian dan memberikan saran transportasi."""
-    style = travel_style.capitalize()
+def evaluate_travel_style(daily_budget: float, user_category_or_style: str) -> dict:
+    """Mengevaluasi kesesuaian gaya perjalanan/kategori pilihan user dengan budget harian."""
+    category = (user_category_or_style or "Standard").capitalize()
     
-    # Batas minimum budget harian dalam USD untuk tiap gaya
+    # Batas minimum budget harian dalam USD
     min_budgets = {
         "Backpacker": 0,
         "Standard": 50,
         "Luxury": 150
     }
     
-    min_required = min_budgets.get(style, 50)
-    is_mismatch = daily_budget < min_required
+    # Ambil batas minimum berdasarkan kategori budget (default $50)
+    min_required = min_budgets.get(category, 50)
     
-    # Pemetaan transportasi standar berbasis gaya pilihan
-    transport_map = {
-        "Backpacker": "Bus & Public MRT",
-        "Standard": "Regular Train & Taxi Combination",
-        "Luxury": "Private Car & Express Bullet Train"
-    }
+    # Hitung mismatch jika daily budget kurang dari ambang minimum kategori pilihan
+    is_mismatch = daily_budget < min_required if category in min_budgets else False
     
-    if is_mismatch:
-        recommended_transport = "Public Bus / MRT (Disesuaikan karena batasan anggaran)"
-        advice = {
-            "needed_daily_budget": min_required,
-            "message": f"Anggaran harian Anda (${daily_budget}/hari) berada di bawah estimasi gaya {style} (min. ${min_required}/hari)."
-        }
+    # Pemetaan transportasi rekomendasi
+    if daily_budget >= 150:
+        recommended_transport = "Private Car & Express Bullet Train"
+    elif daily_budget >= 50:
+        recommended_transport = "Regular Train & Taxi Combination"
     else:
-        recommended_transport = transport_map.get(style, "Regular Train")
-        advice = None
-        
+        recommended_transport = "Public Bus & MRT"
+
+    advice = None
+    if is_mismatch:
+        advice = f"Anggaran harian Anda (${daily_budget:.1f}/hari) berada di bawah estimasi kategori {category} (min. ${min_required}/hari)."
+
     return {
         "transportation": recommended_transport,
         "is_mismatch": is_mismatch,

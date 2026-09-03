@@ -64,7 +64,8 @@ class TripRequest(BaseModel):
     budget: float
     currency: Optional[str] = "USD"
     travel_month: MonthEnum
-    travel_style: Optional[str] = "Standard"  # [CORE CHALLENGE]
+    travel_style: Optional[str] = "Solo" # Metadata tipe perjalanan (Solo/Couple/Family)
+    user_category: Optional[str] = "Standard" # Menampung pilihan kategori dari dropdown user
     hotel_cost: Optional[float] = 0.0
     food_cost: Optional[float] = 0.0
     transport_cost: Optional[float] = 0.0
@@ -74,59 +75,48 @@ class TripRequest(BaseModel):
 # 2. ENDPOINTS IMPLEMENTATION
 # =====================================================================
 
-# [HANDS-ON LAB] Endpoint 1 — GET /
+# Endpoint 1 — GET /
 @app.get("/")
 def home():
     return {"message": "Welcome to KelanaAI"}
 
-# [HANDS-ON LAB] Endpoint 2 — GET /health
+# Endpoint 2 — GET /health
 @app.get("/health")
 def health_check():
     return {"status": "OK"}
 
-# [BONUS CHALLENGE] Endpoint — GET /api/v1/trip-categories
+# Endpoint — GET /api/v1/trip-categories
 @app.get("/api/v1/trip-categories")
 def get_trip_categories():
     return ["Backpacker", "Standard", "Luxury"]
 
-# [HOMEWORK] Endpoint 1 — GET /api/v1/recommendations
+# Endpoint 1 — GET /api/v1/recommendations
 @app.get("/api/v1/recommendations")
 def get_all_recommendations():
     return ["Tokyo Tower", "Mount Fuji", "Shibuya"]
 
-# [HOMEWORK] Endpoint 2 — GET /api/v1/transportations
+# Endpoint 2 — GET /api/v1/transportations
 @app.get("/api/v1/transportations")
 def get_all_transportations():
     return ["Bus", "Train", "Flight"]
 
-# [HANDS-ON LAB & CORE CHALLENGE] Endpoint 3 — POST /api/v1/trips [Endpoint Utama untuk frontend Next.js (Prescriptive UX)]
+# Endpoint 3 — POST /api/v1/trips [Endpoint Utama In-Memory / Non-DB]
 @app.post("/api/v1/trips")
 def create_trip(request: TripRequest):
-    # Memanggil fungsi logika bisnis dari trip_service.py
-    # 1. Hitung Anggaran Harian 
     daily_budget = calculate_daily_budget(request.budget, request.days)
-
-    # 2. Penentuan Kategori Trip Dasar berdasarkan Total Budget
-    category = get_trip_category(daily_budget)
+    ai_category = get_trip_category(daily_budget) # Hasil rekomendasi kalkulasi AI
     
-    # 3. Mengolah list destinasi / Ambil Rekomendasi Tempat
     destinations_list = [request.destination]
     places = get_recommended_places(destinations_list)
     
-    # 4. Evaluasi Gaya Perjalanan & Rekomendasi Transportasi Pintar
     style_eval = evaluate_travel_style(daily_budget, request.travel_style)
-    
-    # 5. Penentuan Musim Perjalanan (Dikelola aman via trip_service.py)
     season = get_travel_season(request.travel_month)
     
-    # 6. Hitung Total Biaya Estimasi
     total_cost = calculate_total_cost(
         request.hotel_cost, request.food_cost, request.transport_cost, request.misc_cost
     )
-    
     is_budget_exceeded = total_cost > request.budget
 
-    # 7. Kembalikan Balasan JSON Lengkap
     return {
         "destination": request.destination,
         "country": request.country,
@@ -134,7 +124,8 @@ def create_trip(request: TripRequest):
         "budget": request.budget,
         "currency": request.currency,
         "daily_budget": daily_budget,
-        "category": category,
+        "user_category": request.user_category, # Kirim pilihan user
+        "category": ai_category,                 # Rekomendasi kalkulasi AI
         "travel_month": request.travel_month,
         "season": season,
         "recommended_places": places,
@@ -154,13 +145,12 @@ def create_trip(request: TripRequest):
 def create_trip_db(request: TripRequest, db: Session = Depends(get_db)):
     # 1. Jalankan Logika Bisnis
     daily_budget = calculate_daily_budget(request.budget, request.days)
-    category = get_trip_category(daily_budget)
+    ai_category = get_trip_category(daily_budget) # Rekomendasi AI
     season = get_travel_season(request.travel_month)
 
     places = get_recommended_places([request.destination])
     style_eval = evaluate_travel_style(daily_budget, request.travel_style)
 
-    # Kirim 4 argumen lengkap ke calculate_total_cost
     total_cost = calculate_total_cost(
         request.hotel_cost,
         request.food_cost,
@@ -169,7 +159,7 @@ def create_trip_db(request: TripRequest, db: Session = Depends(get_db)):
     )
     is_budget_exceeded = "Ya" if total_cost > request.budget else "Tidak"
 
-    # 2. Buat Objek Model ORM
+    # 2. Buat Objek Model ORM (Memisahkan user_category dan category)
     new_trip = models.Trip(
         destination=request.destination,
         country=request.country,
@@ -177,7 +167,8 @@ def create_trip_db(request: TripRequest, db: Session = Depends(get_db)):
         budget=request.budget,
         currency=request.currency,
         daily_budget=daily_budget,
-        category=category,
+        user_category=request.user_category, # Simpan pilihan dropdown user
+        category=ai_category,                 # Simpan hasil kalkulasi AI
         travel_month=request.travel_month.value,
         season=season,
         recommended_places=places,
@@ -197,21 +188,30 @@ def create_trip_db(request: TripRequest, db: Session = Depends(get_db)):
 
 @app.get("/trips")
 def get_all_trips(db: Session = Depends(get_db)):
-    trips = db.query(models.Trip).all()
+    # Mengurutkan trip berdasarkan ID secara descending (terbaru ke terlama)
+    trips = db.query(models.Trip).order_by(models.Trip.id.desc()).all()
     return trips
 
-# # =======================================================
-# # 4. ENDPOINT AI GENERATION AMAZON BEDROCK (SESI 5)
-# # =======================================================
+
+# [PENYESUAIAN BARU]: Endpoint untuk mengambil detail 1 trip spesifik berdasarkan ID
+@app.get("/trips/{id}")
+def get_trip_by_id(id: int, db: Session = Depends(get_db)):
+    trip = db.query(models.Trip).filter(models.Trip.id == id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Rencana perjalanan tidak ditemukan")
+    return trip
+
+
+# =======================================================
+# 4. ENDPOINT AI GENERATION AMAZON BEDROCK (SESI 5)
+# =======================================================
 
 @app.post("/api/v1/trips/{id}/generate")
 def generate_ai_recommendation(id: int, db: Session = Depends(get_db)):
-    # 1. Cari data trip berdasarkan ID di PostgreSQL
     trip = db.query(models.Trip).filter(models.Trip.id == id).first()
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    # 2. Panggil Bedrock Service untuk membuat rekomendasi AI
     ai_result = generate_trip_recommendation(
         destination=trip.destination,
         days=trip.days,
@@ -219,12 +219,10 @@ def generate_ai_recommendation(id: int, db: Session = Depends(get_db)):
         travel_style=trip.travel_style or "Standard"
     )
 
-    # 3. Simpan hasil rekomendasi ke database PostgreSQL
     trip.ai_recommendation = ai_result
     db.commit()
     db.refresh(trip)
 
-    # 4. Kembalikan balasan JSON
     return {
         "trip_id": trip.id,
         "destination": trip.destination,

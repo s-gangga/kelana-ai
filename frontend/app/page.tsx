@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
+  const router = useRouter();
   const [formData, setFormData] = useState({
     destination: "",
     country: "",
@@ -10,7 +12,8 @@ export default function Home() {
     budget: 500,
     currency: "USD",
     travel_month: "January",
-    travel_style: "Standard",
+    category: "Standard",      // Kategori Anggaran Pilihan User (Backpacker/Standard/Luxury)
+    travel_style: "Solo",       // Tipe Perjalanan Rombongan (Solo/Couple/Family)
     hotel_cost: 0,
     food_cost: 0,
     transport_cost: 0,
@@ -35,17 +38,27 @@ export default function Home() {
     setError("");
     setResult(null);
 
+    // PERBAIKAN: Petakan formData.category menjadi user_category untuk backend FastAPI
+    const payload = {
+      ...formData,
+      user_category: formData.category, // Memastikan pilihan user dikirim ke field user_category
+    };
+
     try {
-      const res = await fetch("http://localhost:8000/api/v1/trips", {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${API_URL}/trips`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) throw new Error("Gagal memproses data trip");
 
       const data = await res.json();
       setResult(data);
+
+      // Auto-redirect ke Dashboard setelah trip baru dibuat
+      router.push("/trips");
     } catch (err: any) {
       setError(err.message || "Terjadi kesalahan koneksi");
     } finally {
@@ -92,6 +105,7 @@ export default function Home() {
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium mb-1 text-slate-300">Negara</label>
                 <input
@@ -103,6 +117,7 @@ export default function Home() {
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium mb-1 text-slate-300">Jumlah Hari</label>
                 <input
@@ -114,6 +129,7 @@ export default function Home() {
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium mb-1 text-slate-300">Total Anggaran (USD)</label>
                 <input
@@ -125,6 +141,7 @@ export default function Home() {
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium mb-1 text-slate-300">Bulan Perjalanan</label>
                 <select
@@ -138,28 +155,42 @@ export default function Home() {
                   ))}
                 </select>
               </div>
+
+              {/* Kategori Anggaran */}
               <div>
-                <label className="block text-sm font-medium mb-1 text-slate-300">Gaya Perjalanan</label>
+                <label className="block text-sm font-medium mb-1 text-slate-300">Kategori Anggaran</label>
                 <select
-                  name="travel_style"
-                  value={formData.travel_style}
+                  name="category"
+                  value={formData.category}
                   onChange={handleChange}
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white focus:outline-none focus:border-blue-500"
                 >
-                  <option value="Standard">Standard</option>
-                  <option value="Backpacker">Backpacker</option>
-                  <option value="Luxury">Luxury</option>
+                  <option value="Backpacker">Backpacker (≤$50/hari)</option>
+                  <option value="Standard">Standard ($50-$150/hari)</option>
+                  <option value="Luxury">Luxury (≥$150/hari)</option>
                 </select>
-                <p className="text-xs text-slate-400 mt-1">
-                  💡 Perkiraan harian: Backpacker (≤$50), Standard ($50-$150), Luxury (≥$150).
-                </p>
               </div>
+            </div>
+
+            {/* FIELD: Tipe Perjalanan (Travel Style) */}
+            <div>
+              <label className="block text-sm font-medium mb-1 text-slate-300">Tipe Perjalanan (Travel Style)</label>
+              <select
+                name="travel_style"
+                value={formData.travel_style}
+                onChange={handleChange}
+                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="Solo">Solo Travel</option>
+                <option value="Couple">Couple / Pasangan</option>
+                <option value="Family">Family / Keluarga</option>
+              </select>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition shadow-md"
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition shadow-md mt-2"
             >
               {loading ? "Memproses..." : "Hitung Rencana Perjalanan"}
             </button>
@@ -179,9 +210,9 @@ export default function Home() {
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 <p><span className="text-slate-400">Kategori Trip:</span> {result.category}</p>
+                <p><span className="text-slate-400">Tipe Perjalanan:</span> {result.travel_style}</p>
                 <p><span className="text-slate-400">Anggaran Harian:</span> ${result.daily_budget}</p>
                 <p><span className="text-slate-400">Musim Terprediksi:</span> {result.season}</p>
-                <p><span className="text-slate-400">Saran Transportasi:</span> {result.recommendation_transport}</p>
               </div>
 
               {result.is_mismatch && result.advice && (
@@ -190,22 +221,6 @@ export default function Home() {
                     ⚠️ Penyesuaian Anggaran & Gaya Perjalanan
                   </p>
                   <p>{result.advice.message}</p>
-                  <div className="text-xs text-amber-300 space-y-1 pt-1 border-t border-amber-500/30">
-                    <p className="font-semibold">Opsi Penyesuaian Agar Sesuai Gaya {formData.travel_style}:</p>
-                    <p>• 📈 <b>Naikkan Total Anggaran:</b> Tingkatkan menjadi min. <b>${result.advice.needed_daily_budget * formData.days}</b> (untuk {formData.days} hari).</p>
-                    <p>• 🗓️ <b>Kurangi Durasi:</b> Sesuaikan durasi menjadi <b>{Math.max(1, Math.floor(formData.budget / result.advice.needed_daily_budget))} hari</b> dengan anggaran ${formData.budget}.</p>
-                  </div>
-                </div>
-              )}
-
-              {result.recommended_places && (
-                <div>
-                  <p className="text-sm text-slate-400 mb-1">Rekomendasi Tempat:</p>
-                  <ul className="list-disc list-inside text-slate-200">
-                    {result.recommended_places.map((place: string, idx: number) => (
-                      <li key={idx}>{place}</li>
-                    ))}
-                  </ul>
                 </div>
               )}
             </div>
@@ -217,13 +232,6 @@ export default function Home() {
       <footer className="bg-slate-950 border-t border-slate-800 text-slate-400 text-sm py-6 text-center mt-12">
         <div className="max-w-3xl mx-auto space-y-2 px-4">
           <p>© 2026 KelanaAI Travel Planner. All rights reserved.</p>
-          <div className="flex justify-center space-x-4 text-xs text-slate-400">
-            <a href="#" className="hover:text-blue-400 transition">Privacy Policy</a>
-            <span>•</span>
-            <a href="#" className="hover:text-blue-400 transition">Terms of Service</a>
-            <span>•</span>
-            <a href="#" className="hover:text-blue-400 transition">Contact Us</a>
-          </div>
         </div>
       </footer>
     </div>

@@ -11,7 +11,11 @@ class Trip(Base):
     budget = Column(Float)
     currency = Column(String)
     daily_budget = Column(Float)
-    category = Column(String)
+    
+    # PERBAIKAN: Pemisahan Kategori Input User vs Rekomendasi AI
+    user_category = Column(String, nullable=True) # Pilihan awal dari dropdown user (Backpacker/Standard/Luxury)
+    category = Column(String)                     # Rekomendasi/kalkulasi AI (Backpacker/Standard/Luxury)
+    
     travel_month = Column(String)
     season = Column(String)
     recommended_places = Column(JSON)
